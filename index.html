@@ -1,0 +1,921 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>TOR IP ROTATOR — Live Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --green:   #00ff88;
+    --dim:     #00aa55;
+    --red:     #ff3355;
+    --yellow:  #ffcc00;
+    --blue:    #00cfff;
+    --bg:      #030b06;
+    --panel:   #040f07;
+    --border:  #0d2e18;
+    --text:    #a8ffc4;
+    --muted:   #3a6b50;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 14px;
+    min-height: 100vh;
+    overflow-x: hidden;
+    cursor: crosshair;
+  }
+
+  /* Scanlines overlay */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,255,136,0.015) 2px,
+      rgba(0,255,136,0.015) 4px
+    );
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  /* Grid noise background */
+  body::after {
+    content: '';
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(rgba(0,255,136,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,255,136,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* ── HEADER ── */
+  header {
+    position: relative;
+    z-index: 10;
+    border-bottom: 1px solid var(--border);
+    padding: 18px 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: linear-gradient(180deg, #040f08 0%, transparent 100%);
+  }
+
+  .logo {
+    font-family: 'Orbitron', monospace;
+    font-weight: 900;
+    font-size: 22px;
+    letter-spacing: 4px;
+    color: var(--green);
+    text-shadow: 0 0 20px var(--green), 0 0 40px rgba(0,255,136,0.3);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .logo-icon {
+    width: 36px; height: 36px;
+    border: 2px solid var(--green);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    animation: pulse-ring 2s ease-in-out infinite;
+    box-shadow: 0 0 15px rgba(0,255,136,0.4);
+  }
+
+  .logo-icon svg { fill: var(--green); }
+
+  @keyframes pulse-ring {
+    0%,100% { box-shadow: 0 0 8px rgba(0,255,136,0.4); }
+    50%      { box-shadow: 0 0 20px rgba(0,255,136,0.8), 0 0 40px rgba(0,255,136,0.3); }
+  }
+
+  .header-right {
+    display: flex; align-items: center; gap: 20px;
+  }
+
+  .sys-clock {
+    font-size: 12px;
+    color: var(--muted);
+    letter-spacing: 2px;
+  }
+
+  /* ── STATUS BAR ── */
+  .status-bar {
+    position: relative; z-index: 10;
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 32px;
+    border-bottom: 1px solid var(--border);
+    background: rgba(0,255,136,0.03);
+    font-size: 12px;
+    letter-spacing: 1px;
+  }
+
+  .status-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--red);
+    transition: background 0.3s;
+  }
+  .status-dot.active { background: var(--green); animation: blink 1s step-start infinite; }
+  .status-dot.active + .status-label { color: var(--green); }
+
+  @keyframes blink { 50% { opacity: 0.3; } }
+
+  .status-label { color: var(--muted); transition: color 0.3s; }
+
+  .sep { color: var(--border); margin: 0 4px; }
+
+  /* ── MAIN GRID ── */
+  .main {
+    position: relative; z-index: 10;
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    grid-template-rows: auto 1fr;
+    gap: 16px;
+    padding: 20px 24px;
+    height: calc(100vh - 120px);
+    max-height: 900px;
+  }
+
+  @media (max-width: 900px) {
+    .main { grid-template-columns: 1fr; height: auto; }
+  }
+
+  /* ── PANEL ── */
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .panel::before {
+    content: '';
+    position: absolute; top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--green), transparent);
+    opacity: 0.5;
+  }
+
+  .panel-header {
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    font-family: 'Orbitron', monospace;
+    font-size: 10px;
+    letter-spacing: 3px;
+    color: var(--dim);
+    display: flex; align-items: center; gap: 8px;
+  }
+
+  .panel-header .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--dim); }
+
+  /* ── CONTROL PANEL ── */
+  .controls { grid-column: 1; grid-row: 1 / 3; }
+
+  .controls-body { padding: 20px 16px; display: flex; flex-direction: column; gap: 16px; }
+
+  /* IP Display */
+  .ip-display {
+    background: rgba(0,255,136,0.04);
+    border: 1px solid rgba(0,255,136,0.15);
+    border-radius: 2px;
+    padding: 16px;
+    text-align: center;
+  }
+
+  .ip-label { font-size: 10px; letter-spacing: 3px; color: var(--muted); margin-bottom: 8px; }
+
+  .ip-value {
+    font-family: 'Orbitron', monospace;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--green);
+    text-shadow: 0 0 12px rgba(0,255,136,0.5);
+    letter-spacing: 2px;
+    word-break: break-all;
+    min-height: 26px;
+    transition: all 0.3s;
+  }
+
+  .ip-value.changing {
+    animation: ip-flash 0.5s ease;
+  }
+
+  @keyframes ip-flash {
+    0%   { color: var(--yellow); text-shadow: 0 0 20px var(--yellow); }
+    100% { color: var(--green);  text-shadow: 0 0 12px rgba(0,255,136,0.5); }
+  }
+
+  /* Geo fields */
+  .geo-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .geo-field {
+    background: rgba(255,255,255,0.02);
+    border: 1px solid var(--border);
+    padding: 8px 10px;
+    border-radius: 1px;
+  }
+
+  .geo-field-label { font-size: 9px; letter-spacing: 2px; color: var(--muted); margin-bottom: 4px; }
+  .geo-field-value { font-size: 13px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* Country flag display */
+  .country-flag {
+    font-size: 28px;
+    display: block;
+    text-align: center;
+    margin-bottom: 4px;
+    filter: drop-shadow(0 0 8px rgba(0,255,136,0.3));
+  }
+
+  /* Buttons */
+  .btn {
+    width: 100%;
+    padding: 12px;
+    font-family: 'Orbitron', monospace;
+    font-size: 11px;
+    letter-spacing: 3px;
+    font-weight: 700;
+    border: none;
+    border-radius: 1px;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .btn::after {
+    content: '';
+    position: absolute; inset: 0;
+    background: linear-gradient(135deg, rgba(255,255,255,0.1), transparent);
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+
+  .btn:hover::after { opacity: 1; }
+
+  .btn-start {
+    background: rgba(0,255,136,0.1);
+    color: var(--green);
+    border: 1px solid rgba(0,255,136,0.4);
+  }
+  .btn-start:hover {
+    background: rgba(0,255,136,0.2);
+    box-shadow: 0 0 20px rgba(0,255,136,0.2);
+  }
+  .btn-start:disabled {
+    opacity: 0.3; cursor: not-allowed;
+  }
+
+  .btn-stop {
+    background: rgba(255,51,85,0.1);
+    color: var(--red);
+    border: 1px solid rgba(255,51,85,0.4);
+  }
+  .btn-stop:hover {
+    background: rgba(255,51,85,0.2);
+    box-shadow: 0 0 20px rgba(255,51,85,0.2);
+  }
+  .btn-stop:disabled { opacity: 0.3; cursor: not-allowed; }
+
+  /* Stats */
+  .stats-row {
+    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px;
+  }
+
+  .stat {
+    background: rgba(255,255,255,0.02);
+    border: 1px solid var(--border);
+    padding: 10px 8px;
+    text-align: center;
+  }
+
+  .stat-val {
+    font-family: 'Orbitron', monospace;
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--green);
+    line-height: 1;
+    text-shadow: 0 0 8px rgba(0,255,136,0.4);
+  }
+
+  .stat-lbl { font-size: 9px; letter-spacing: 2px; color: var(--muted); margin-top: 4px; }
+
+  /* Country progress */
+  .country-list {
+    max-height: 160px;
+    overflow-y: auto;
+    display: flex; flex-direction: column; gap: 3px;
+  }
+
+  .country-list::-webkit-scrollbar { width: 3px; }
+  .country-list::-webkit-scrollbar-track { background: transparent; }
+  .country-list::-webkit-scrollbar-thumb { background: var(--border); }
+
+  .country-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 4px 8px;
+    font-size: 11px;
+    border-radius: 1px;
+    transition: background 0.2s;
+  }
+
+  .country-item.active {
+    background: rgba(0,255,136,0.08);
+    color: var(--green);
+    border: 1px solid rgba(0,255,136,0.2);
+  }
+
+  .country-item:not(.active) { color: var(--muted); }
+
+  .country-cc {
+    font-size: 10px; letter-spacing: 1px;
+    min-width: 24px;
+  }
+
+  /* ── LOG PANEL ── */
+  .log-panel {
+    grid-column: 2;
+    grid-row: 1 / 3;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .log-toolbar {
+    padding: 8px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 10px;
+  }
+
+  .log-filter {
+    background: rgba(0,255,136,0.04);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 12px;
+    padding: 4px 10px;
+    outline: none;
+    width: 200px;
+  }
+
+  .log-filter:focus { border-color: var(--dim); }
+
+  .badge {
+    background: rgba(0,255,136,0.1);
+    border: 1px solid rgba(0,255,136,0.3);
+    color: var(--green);
+    font-size: 10px;
+    padding: 2px 8px;
+    letter-spacing: 1px;
+  }
+
+  .badge-red {
+    background: rgba(255,51,85,0.1);
+    border-color: rgba(255,51,85,0.3);
+    color: var(--red);
+  }
+
+  .badge-yellow {
+    background: rgba(255,204,0,0.1);
+    border-color: rgba(255,204,0,0.3);
+    color: var(--yellow);
+  }
+
+  .btn-clear {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 1px;
+    padding: 4px 10px;
+    cursor: pointer;
+    transition: all 0.2s;
+    margin-left: auto;
+  }
+  .btn-clear:hover { border-color: var(--red); color: var(--red); }
+
+  .log-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 0;
+    font-size: 12px;
+    line-height: 1.6;
+  }
+
+  .log-body::-webkit-scrollbar { width: 4px; }
+  .log-body::-webkit-scrollbar-track { background: transparent; }
+  .log-body::-webkit-scrollbar-thumb { background: var(--border); }
+
+  .log-entry {
+    display: grid;
+    grid-template-columns: 180px 52px 1fr;
+    gap: 8px;
+    padding: 4px 16px;
+    border-bottom: 1px solid rgba(0,255,136,0.04);
+    animation: entry-in 0.3s ease;
+    transition: background 0.2s;
+  }
+
+  .log-entry:hover { background: rgba(0,255,136,0.03); }
+
+  @keyframes entry-in {
+    from { opacity: 0; transform: translateX(-8px); }
+    to   { opacity: 1; transform: translateX(0); }
+  }
+
+  .log-ts { color: var(--muted); white-space: nowrap; }
+
+  .log-lvl {
+    font-weight: 700; letter-spacing: 1px;
+    text-align: center;
+  }
+  .log-lvl.INFO  { color: var(--green); }
+  .log-lvl.WARN  { color: var(--yellow); }
+  .log-lvl.ERROR { color: var(--red); }
+
+  .log-msg { color: var(--text); word-break: break-word; }
+  .log-msg .ip-tag {
+    color: var(--blue);
+    font-weight: bold;
+  }
+  .log-msg .country-tag { color: var(--yellow); }
+
+  /* IP table inside log */
+  .ip-detail {
+    grid-column: 1 / 4;
+    background: rgba(0,207,255,0.04);
+    border-left: 2px solid var(--blue);
+    padding: 6px 12px;
+    margin-top: 2px;
+    font-size: 11px;
+    color: var(--blue);
+    display: flex; gap: 16px; flex-wrap: wrap;
+  }
+  .ip-detail span { opacity: 0.8; }
+  .ip-detail b   { color: var(--text); }
+
+  /* World map placeholder */
+  .map-panel {
+    grid-column: 2;
+    grid-row: 1;
+    max-height: 180px;
+    display: none;  /* enable if you add a real map */
+  }
+
+  /* Rotate indicator */
+  .rotate-ring {
+    width: 48px; height: 48px;
+    border: 2px solid var(--border);
+    border-top-color: var(--green);
+    border-radius: 50%;
+    margin: 0 auto;
+    animation: spin 1s linear infinite;
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  .rotate-ring.active { opacity: 1; }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Empty state */
+  .empty {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--muted);
+    letter-spacing: 2px;
+    font-size: 12px;
+  }
+  .empty svg { opacity: 0.2; margin-bottom: 16px; }
+
+  /* Download btn */
+  .btn-download {
+    background: rgba(0,207,255,0.06);
+    border: 1px solid rgba(0,207,255,0.3);
+    color: var(--blue);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 1px;
+    padding: 4px 10px;
+    cursor: pointer;
+    text-decoration: none;
+    transition: all 0.2s;
+    display: inline-block;
+  }
+  .btn-download:hover { background: rgba(0,207,255,0.12); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">
+      <svg width="18" height="18" viewBox="0 0 24 24">
+        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 15v-4H7l5-8v4h4l-5 8z"/>
+      </svg>
+    </div>
+    TOR IP ROTATOR
+  </div>
+  <div class="header-right">
+    <div class="sys-clock" id="clock">--:--:-- UTC</div>
+    <a href="/api/logs/raw" target="_blank" class="btn-download">⬇ RAW LOGS</a>
+  </div>
+</header>
+
+<div class="status-bar">
+  <div class="status-dot" id="statusDot"></div>
+  <span class="status-label" id="statusLabel">STOPPED</span>
+  <span class="sep">|</span>
+  <span style="color:var(--muted)">ROTATIONS:</span>
+  <span id="totalRotations" style="color:var(--text)">0</span>
+  <span class="sep">|</span>
+  <span style="color:var(--muted)">INTERVAL:</span>
+  <span style="color:var(--text)">3s</span>
+  <span class="sep">|</span>
+  <span style="color:var(--muted)">STREAM:</span>
+  <span id="streamStatus" style="color:var(--red)">OFFLINE</span>
+</div>
+
+<div class="main">
+
+  <!-- ── CONTROLS ── -->
+  <div class="panel controls">
+    <div class="panel-header">
+      <div class="dot"></div>
+      CONTROL PANEL
+    </div>
+    <div class="controls-body">
+
+      <!-- Current IP -->
+      <div class="ip-display">
+        <div class="ip-label">CURRENT EXIT NODE</div>
+        <div class="ip-value" id="currentIP">---</div>
+        <div style="margin-top:6px;font-size:11px;color:var(--muted)" id="currentOrg">waiting…</div>
+      </div>
+
+      <!-- Geo info -->
+      <div class="geo-grid">
+        <div class="geo-field">
+          <div class="geo-field-label">COUNTRY</div>
+          <div class="geo-field-value" id="geoCountry"><span id="flagEmoji">🌐</span> —</div>
+        </div>
+        <div class="geo-field">
+          <div class="geo-field-label">CITY</div>
+          <div class="geo-field-value" id="geoCity">—</div>
+        </div>
+        <div class="geo-field">
+          <div class="geo-field-label">REGION</div>
+          <div class="geo-field-value" id="geoRegion">—</div>
+        </div>
+        <div class="geo-field">
+          <div class="geo-field-label">TIMEZONE</div>
+          <div class="geo-field-value" id="geoTz">—</div>
+        </div>
+      </div>
+
+      <!-- Spinner -->
+      <div class="rotate-ring" id="rotateRing"></div>
+
+      <!-- Buttons -->
+      <button class="btn btn-start" id="btnStart" onclick="doStart()">▶ START ROTATION</button>
+      <button class="btn btn-stop"  id="btnStop"  onclick="doStop()" disabled>■ STOP ROTATION</button>
+
+      <!-- Stats -->
+      <div class="stats-row">
+        <div class="stat">
+          <div class="stat-val" id="statTotal">0</div>
+          <div class="stat-lbl">TOTAL</div>
+        </div>
+        <div class="stat">
+          <div class="stat-val" id="statCountry">—</div>
+          <div class="stat-lbl">COUNTRY</div>
+        </div>
+        <div class="stat">
+          <div class="stat-val" id="statErrors">0</div>
+          <div class="stat-lbl">ERRORS</div>
+        </div>
+      </div>
+
+      <!-- Country queue -->
+      <div class="panel-header" style="padding:0;border:none;margin-top:4px;">
+        <div class="dot"></div>
+        NEXT COUNTRIES
+      </div>
+      <div class="country-list" id="countryList"></div>
+
+    </div>
+  </div>
+
+  <!-- ── LOGS ── -->
+  <div class="panel log-panel">
+    <div class="panel-header">
+      <div class="dot"></div>
+      LIVE IP LOG STREAM
+      <span id="logCount" class="badge" style="margin-left:auto">0 RECORDS</span>
+    </div>
+    <div class="log-toolbar">
+      <input class="log-filter" id="filterInput" type="text" placeholder="filter logs…" oninput="applyFilter()">
+      <span class="badge" id="filterBadge" style="display:none">filtered</span>
+      <button class="btn-clear" onclick="clearLogs()">CLEAR</button>
+    </div>
+    <div class="log-body" id="logBody">
+      <div class="empty" id="emptyState">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+          <rect x="3" y="3" width="18" height="18" rx="1"/>
+          <line x1="3" y1="9" x2="21" y2="9"/>
+          <line x1="9" y1="21" x2="9" y2="9"/>
+        </svg>
+        <div>NO LOG ENTRIES YET</div>
+        <div style="margin-top:8px;font-size:10px">Start the rotator to begin capturing IP data</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  // ── Constants ────────────────────────────────────────────────────────────
+  const COUNTRIES = [
+    "us","de","fr","nl","gb","ch","se","no","ca","jp","au","br","sg","in","ru",
+    "pl","it","es","at","be","cz","dk","fi","gr","hu","ie","kr","mx","nz","pt",
+    "ro","za","ar","cl","co","eg","id","my","ph","th","tr","ua","vn"
+  ];
+
+  const FLAG = cc => cc
+    ? String.fromCodePoint(...[...cc.toUpperCase()].map(c => 0x1F1A5 + c.charCodeAt(0)))
+    : '🌐';
+
+  const COUNTRY_NAMES = {
+    us:"United States",de:"Germany",fr:"France",nl:"Netherlands",gb:"United Kingdom",
+    ch:"Switzerland",se:"Sweden",no:"Norway",ca:"Canada",jp:"Japan",au:"Australia",
+    br:"Brazil",sg:"Singapore",in:"India",ru:"Russia",pl:"Poland",it:"Italy",
+    es:"Spain",at:"Austria",be:"Belgium",cz:"Czechia",dk:"Denmark",fi:"Finland",
+    gr:"Greece",hu:"Hungary",ie:"Ireland",kr:"South Korea",mx:"Mexico",nz:"New Zealand",
+    pt:"Portugal",ro:"Romania",za:"South Africa",ar:"Argentina",cl:"Chile",co:"Colombia",
+    eg:"Egypt",id:"Indonesia",my:"Malaysia",ph:"Philippines",th:"Thailand",
+    tr:"Turkey",ua:"Ukraine",vn:"Vietnam"
+  };
+
+  // ── State ────────────────────────────────────────────────────────────────
+  let logs = [];
+  let filteredLogs = [];
+  let errorCount = 0;
+  let currentIdx = 0;
+  let isRunning = false;
+  let evtSource = null;
+
+  // ── Clock ────────────────────────────────────────────────────────────────
+  function updateClock() {
+    const now = new Date();
+    const h = String(now.getUTCHours()).padStart(2,'0');
+    const m = String(now.getUTCMinutes()).padStart(2,'0');
+    const s = String(now.getUTCSeconds()).padStart(2,'0');
+    document.getElementById('clock').textContent = `${h}:${m}:${s} UTC`;
+  }
+  setInterval(updateClock, 1000);
+  updateClock();
+
+  // ── Country list ─────────────────────────────────────────────────────────
+  function renderCountryList(activeIdx) {
+    const el = document.getElementById('countryList');
+    const start = activeIdx % COUNTRIES.length;
+    const slice = [];
+    for (let i = 0; i < 8; i++) {
+      slice.push(COUNTRIES[(start + i) % COUNTRIES.length]);
+    }
+    el.innerHTML = slice.map((cc, i) => `
+      <div class="country-item ${i === 0 ? 'active' : ''}">
+        <span>${FLAG(cc)}</span>
+        <span class="country-cc">${cc.toUpperCase()}</span>
+        <span>${COUNTRY_NAMES[cc] || cc}</span>
+      </div>
+    `).join('');
+  }
+  renderCountryList(0);
+
+  // ── Log rendering ─────────────────────────────────────────────────────────
+  function highlightMsg(msg) {
+    return msg
+      .replace(/(\d{1,3}(?:\.\d{1,3}){3})/g, '<span class="ip-tag">$1</span>')
+      .replace(/\[([A-Z]{2})\]/g, '<span class="country-tag">[$1]</span>');
+  }
+
+  function renderEntry(rec) {
+    const div = document.createElement('div');
+    div.className = 'log-entry';
+    div.dataset.level = rec.level;
+    div.dataset.msg   = (rec.message || '').toLowerCase();
+    div.innerHTML = `
+      <span class="log-ts">${rec.timestamp || ''}</span>
+      <span class="log-lvl ${rec.level || ''}">${rec.level || ''}</span>
+      <span class="log-msg">${highlightMsg(rec.message || '')}</span>
+    `;
+    if (rec.ip_info && rec.ip_info.ip && rec.ip_info.ip !== 'error') {
+      const info = rec.ip_info;
+      const extra = document.createElement('div');
+      extra.className = 'ip-detail';
+      extra.innerHTML = `
+        <span>${FLAG(info.country?.toLowerCase())} <b>${info.country}</b></span>
+        <span>IP: <b>${info.ip}</b></span>
+        <span>City: <b>${info.city}</b></span>
+        <span>Org: <b>${info.org}</b></span>
+        <span>TZ: <b>${info.timezone}</b></span>
+      `;
+      div.appendChild(extra);
+    }
+    return div;
+  }
+
+  function prependEntry(rec) {
+    const body = document.getElementById('logBody');
+    const empty = document.getElementById('emptyState');
+    if (empty) empty.remove();
+
+    const div = renderEntry(rec);
+    body.insertBefore(div, body.firstChild);
+    updateLogCount();
+  }
+
+  function updateLogCount() {
+    document.getElementById('logCount').textContent =
+      `${logs.length} RECORDS`;
+  }
+
+  function applyFilter() {
+    const q = document.getElementById('filterInput').value.trim().toLowerCase();
+    const badge = document.getElementById('filterBadge');
+    badge.style.display = q ? 'inline' : 'none';
+
+    document.querySelectorAll('.log-entry').forEach(el => {
+      const match = !q ||
+        (el.dataset.msg && el.dataset.msg.includes(q)) ||
+        (el.dataset.level && el.dataset.level.toLowerCase().includes(q));
+      el.style.display = match ? '' : 'none';
+    });
+  }
+
+  function clearLogs() {
+    logs = [];
+    errorCount = 0;
+    document.getElementById('logBody').innerHTML =
+      `<div class="empty" id="emptyState">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+          <rect x="3" y="3" width="18" height="18" rx="1"/>
+          <line x1="3" y1="9" x2="21" y2="9"/>
+          <line x1="9" y1="21" x2="9" y2="9"/>
+        </svg>
+        <div>CLEARED</div>
+      </div>`;
+    updateLogCount();
+    document.getElementById('statErrors').textContent = '0';
+    document.getElementById('statTotal').textContent = '0';
+  }
+
+  // ── IP update ─────────────────────────────────────────────────────────────
+  function updateCurrentIP(rec) {
+    if (!rec.ip_info) return;
+    const info = rec.ip_info;
+    const ipEl = document.getElementById('currentIP');
+    ipEl.textContent = info.ip;
+    ipEl.classList.remove('changing');
+    void ipEl.offsetWidth;
+    ipEl.classList.add('changing');
+    setTimeout(() => ipEl.classList.remove('changing'), 600);
+
+    document.getElementById('currentOrg').textContent = info.org || '—';
+    document.getElementById('geoCountry').innerHTML =
+      `${FLAG(info.country?.toLowerCase())} ${info.country}`;
+    document.getElementById('geoCity').textContent    = info.city    || '—';
+    document.getElementById('geoRegion').textContent  = info.region  || '—';
+    document.getElementById('geoTz').textContent      = info.timezone || '—';
+  }
+
+  // ── SSE ───────────────────────────────────────────────────────────────────
+  function connectSSE() {
+    if (evtSource) { evtSource.close(); evtSource = null; }
+    evtSource = new EventSource('/stream');
+
+    evtSource.onopen = () => {
+      document.getElementById('streamStatus').textContent = 'LIVE';
+      document.getElementById('streamStatus').style.color = 'var(--green)';
+    };
+
+    evtSource.onmessage = e => {
+      let data;
+      try { data = JSON.parse(e.data); } catch { return; }
+      if (data.type === 'connected' || data.type === 'heartbeat') return;
+
+      logs.unshift(data);
+      prependEntry(data);
+
+      if (data.level === 'ERROR') {
+        errorCount++;
+        document.getElementById('statErrors').textContent = errorCount;
+      }
+
+      if (data.ip_info) {
+        updateCurrentIP(data);
+        currentIdx++;
+        document.getElementById('statTotal').textContent    = currentIdx;
+        document.getElementById('totalRotations').textContent = currentIdx;
+        document.getElementById('statCountry').textContent =
+          data.ip_info.country || '—';
+        renderCountryList(currentIdx);
+      }
+    };
+
+    evtSource.onerror = () => {
+      document.getElementById('streamStatus').textContent = 'RECONNECTING';
+      document.getElementById('streamStatus').style.color = 'var(--yellow)';
+      setTimeout(connectSSE, 3000);
+    };
+  }
+
+  // ── Controls ──────────────────────────────────────────────────────────────
+  async function doStart() {
+    document.getElementById('btnStart').disabled = true;
+    const r = await fetch('/api/start', { method: 'POST' });
+    const d = await r.json();
+    if (d.ok) {
+      isRunning = true;
+      document.getElementById('statusDot').classList.add('active');
+      document.getElementById('statusLabel').textContent = 'RUNNING';
+      document.getElementById('rotateRing').classList.add('active');
+      document.getElementById('btnStop').disabled  = false;
+    } else {
+      document.getElementById('btnStart').disabled = false;
+    }
+  }
+
+  async function doStop() {
+    document.getElementById('btnStop').disabled = true;
+    const r = await fetch('/api/stop', { method: 'POST' });
+    const d = await r.json();
+    if (d.ok) {
+      isRunning = false;
+      document.getElementById('statusDot').classList.remove('active');
+      document.getElementById('statusLabel').textContent = 'STOPPED';
+      document.getElementById('rotateRing').classList.remove('active');
+      document.getElementById('btnStart').disabled = false;
+    } else {
+      document.getElementById('btnStop').disabled = false;
+    }
+  }
+
+  // ── Init ──────────────────────────────────────────────────────────────────
+  async function init() {
+    // Load existing logs
+    const r = await fetch('/api/logs?limit=100');
+    const recs = await r.json();
+    if (recs.length) {
+      const body = document.getElementById('logBody');
+      const empty = document.getElementById('emptyState');
+      if (empty) empty.remove();
+      recs.forEach(rec => body.appendChild(renderEntry(rec)));
+      logs = recs;
+      updateLogCount();
+      // Update current IP from last record
+      const ip = recs.find(r => r.ip_info);
+      if (ip) updateCurrentIP(ip);
+    }
+
+    // Check status
+    const s = await fetch('/api/status').then(r => r.json());
+    if (s.running) {
+      isRunning = true;
+      document.getElementById('statusDot').classList.add('active');
+      document.getElementById('statusLabel').textContent = 'RUNNING';
+      document.getElementById('rotateRing').classList.add('active');
+      document.getElementById('btnStart').disabled = true;
+      document.getElementById('btnStop').disabled  = false;
+      currentIdx = s.total_rotations;
+      document.getElementById('statTotal').textContent = currentIdx;
+      document.getElementById('totalRotations').textContent = currentIdx;
+      document.getElementById('statCountry').textContent = s.current_country?.toUpperCase() || '—';
+      renderCountryList(currentIdx);
+    }
+
+    connectSSE();
+  }
+
+  init();
+</script>
+</body>
+</html>
