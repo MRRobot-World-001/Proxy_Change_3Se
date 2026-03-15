@@ -1,6 +1,6 @@
 # 🧅 TOR IP ROTATOR — Kali Linux
 
-[![CI](https://github.com/YOUR_USERNAME/tor-ip-rotator/actions/workflows/ci.yml/badge.svg)](https://github.com/YOUR_USERNAME/tor-ip-rotator/actions)
+[![CI](https://github.com/MRRobot-World-001/Proxy_Change_3Se.git)](https://github.com/YOUR_USERNAME/tor-ip-rotator/actions)
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-green)](https://python.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
 
